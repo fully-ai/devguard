@@ -85,3 +85,20 @@ def test_devguard_config_disables_rules(tmp_path: Path) -> None:
     res = scan_repository(repo, cfg=cfg)
     assert len(res.findings) == 0
     assert isinstance(Finding("a", "b", "LOW", "c", "d", 1, "e").to_dict(), dict)
+
+
+def test_pyproject_and_gomod_dependency_checks(tmp_path: Path) -> None:
+    repo = tmp_path / "polyglot_repo"
+    repo.mkdir()
+    (repo / "pyproject.toml").write_text(
+        '[project]\nname = "x"\ndependencies = ["httpx", "fastapi>=0.115.0"]\n',
+        encoding="utf-8",
+    )
+    (repo / "go.mod").write_text(
+        "module example.com/app\ngo 1.24\nreplace example.com/lib => ../local-lib\n",
+        encoding="utf-8",
+    )
+    res = scan_repository(repo)
+    rules = {f.rule_id for f in res.findings}
+    assert "DEP-001" in rules
+    assert "DEP-004" in rules

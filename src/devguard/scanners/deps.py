@@ -1,9 +1,10 @@
-"""Dependency manifest hygiene analyzer (requirements.txt, package.json, go.mod)."""
+"""Dependency manifest hygiene analyzer (requirements.txt, pyproject.toml, package.json, go.mod)."""
 
 from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 from devguard.models import Finding, GuardConfig
@@ -45,6 +46,28 @@ def scan_dependencies(path: Path, rel_path: str, text: str, cfg: GuardConfig) ->
                     )
                 )
 
+    elif name == "pyproject.toml" and "DEP-001" not in cfg.disabled_rules:
+        try:
+            data = tomllib.loads(text)
+        except Exception:
+            return findings
+        deps = data.get("project", {}).get("dependencies", [])
+        if isinstance(deps, list):
+            for dep in deps:
+                spec = str(dep).strip()
+                if spec and not _REQ_PIN_RE.match(spec):
+                    findings.append(
+                        Finding(
+                            rule_id="DEP-001",
+                            category="dependencies",
+                            severity="LOW",
+                            title="Unpinned Python Dependency",
+                            file_path=rel_path,
+                            line=1,
+                            message=f"pyproject.toml dependency '{spec}' has no version constraint.",
+                        )
+                    )
+
     elif name == "package.json" and "DEP-003" not in cfg.disabled_rules:
         try:
             data = json.loads(text)
@@ -66,5 +89,23 @@ def scan_dependencies(path: Path, rel_path: str, text: str, cfg: GuardConfig) ->
                                 message=f"Package '{pkg}' uses wildcard/latest version '{ver}'.",
                             )
                         )
+
+    elif name == "go.mod" and "DEP-004" not in cfg.disabled_rules:
+        for lineno, raw in enumerate(text.splitlines(), start=1):
+            stripped = raw.strip()
+            if stripped.startswith("replace ") and "=>" in stripped:
+                target = stripped.split("=>", 1)[1].strip()
+                if target.startswith(("./", "../", "/")):
+                    findings.append(
+                        Finding(
+                            rule_id="DEP-004",
+                            category="dependencies",
+                            severity="MEDIUM",
+                            title="Local Path Replace Directive in go.mod",
+                            file_path=rel_path,
+                            line=lineno,
+                            message=f"Local filesystem replace directive '{stripped}' breaks reproducible builds.",
+                        )
+                    )
 
     return findings
