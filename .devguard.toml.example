@@ -1,0 +1,4 @@
+exclude_dirs = [".git", ".venv", "node_modules", "dist"]
+disabled_rules = []
+entropy_threshold = 4.3
+min_secret_length = 20
