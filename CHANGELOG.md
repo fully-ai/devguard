@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0] - 2026-11-18
+
+### Added
+- **SARIF v2.1.0 Reporter**: Added `--format sarif` for GitHub Code Scanning and IDE SARIF viewers.
+- **GitHub Actions CI/CD Security Scanner (`CI-001`..`CI-005`)**: Detects mutable branch pins, unpinned third-party actions, unsafe `pull_request_target` PR checkouts, script injection via `${{ github.event.* }}`, and `permissions: write-all`.
+- **Baseline & Rule-Specific Suppression**: Added `devguard baseline` subcommand, `--baseline` filtering by finding SHA-256 fingerprint, and `# devguard: ignore RULE_ID` inline annotations.
+- **Cross-Platform Runner Scripts**: Added `scripts/{install,dev,test}.{sh,ps1}`.
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

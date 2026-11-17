@@ -1,17 +1,28 @@
-"""JSON, HTML, and terminal text report formatters."""
+"""JSON, SARIF v2.1.0, HTML, and terminal text report formatters."""
 
 from __future__ import annotations
 
 import html
 import json
+from typing import Any
 
 from devguard.engine import ScanResult
+
+_SARIF_LEVEL_MAP = {
+    "CRITICAL": "error",
+    "HIGH": "error",
+    "MEDIUM": "warning",
+    "LOW": "note",
+}
 
 
 def render_text(result: ScanResult) -> str:
     lines = [
         f"DevGuard Scan Report — {result.root}",
-        f"Files scanned: {result.files_scanned} | Findings: {len(result.findings)}",
+        (
+            f"Files scanned: {result.files_scanned} | "
+            f"Findings: {len(result.findings)} | Suppressed: {result.suppressed_count}"
+        ),
         f"Summary: {result.summary()}",
         "",
     ]
@@ -24,10 +35,62 @@ def render_json(result: ScanResult) -> str:
     payload = {
         "root": result.root,
         "files_scanned": result.files_scanned,
+        "suppressed_count": result.suppressed_count,
         "summary": result.summary(),
-        "findings": [f.to_dict() for f in result.findings],
+        "findings": [{**f.to_dict(), "fingerprint": f.fingerprint()} for f in result.findings],
     }
     return json.dumps(payload, indent=2)
+
+
+def render_sarif(result: ScanResult, version: str = "0.3.0") -> str:
+    """Render findings as a SARIF v2.1.0 document for GitHub Code Scanning."""
+    rules_seen: dict[str, dict[str, Any]] = {}
+    sarif_results: list[dict[str, Any]] = []
+
+    for f in result.findings:
+        if f.rule_id not in rules_seen:
+            rules_seen[f.rule_id] = {
+                "id": f.rule_id,
+                "name": f.title,
+                "shortDescription": {"text": f.title},
+                "fullDescription": {"text": f.message},
+                "properties": {"category": f.category, "severity": f.severity},
+            }
+        sarif_results.append(
+            {
+                "ruleId": f.rule_id,
+                "level": _SARIF_LEVEL_MAP.get(f.severity, "warning"),
+                "message": {"text": f"{f.title}: {f.message}"},
+                "locations": [
+                    {
+                        "physicalLocation": {
+                            "artifactLocation": {"uri": f.file_path.replace("\\", "/")},
+                            "region": {"startLine": max(1, f.line)},
+                        }
+                    }
+                ],
+                "partialFingerprints": {"primaryLocationLineHash": f.fingerprint()},
+            }
+        )
+
+    sarif_doc = {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "DevGuard",
+                        "version": version,
+                        "informationUri": "https://github.com/fully-ai/devguard",
+                        "rules": list(rules_seen.values()),
+                    }
+                },
+                "results": sarif_results,
+            }
+        ],
+    }
+    return json.dumps(sarif_doc, indent=2)
 
 
 def render_html(result: ScanResult) -> str:

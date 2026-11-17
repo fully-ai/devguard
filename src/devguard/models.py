@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import tomllib
 from dataclasses import asdict, dataclass
 from enum import IntEnum
@@ -33,6 +34,11 @@ class Finding:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def fingerprint(self) -> str:
+        """Compute a deterministic fingerprint used for baseline matching and SARIF."""
+        raw = f"{self.rule_id}|{self.file_path}|{self.line}|{self.title}|{self.message}".encode()
+        return hashlib.sha256(raw).hexdigest()[:24]
 
 
 @dataclass(slots=True)

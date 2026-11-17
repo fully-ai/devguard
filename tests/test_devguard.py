@@ -6,7 +6,7 @@ from pathlib import Path
 from devguard.cli import main as cli_main
 from devguard.engine import scan_repository
 from devguard.models import Finding, GuardConfig
-from devguard.reporters import render_html, render_json
+from devguard.reporters import render_html, render_json, render_sarif
 
 
 def test_devguard_detects_secrets_ast_configs_deps_and_plugins(tmp_path: Path) -> None:
@@ -102,3 +102,70 @@ def test_pyproject_and_gomod_dependency_checks(tmp_path: Path) -> None:
     rules = {f.rule_id for f in res.findings}
     assert "DEP-001" in rules
     assert "DEP-004" in rules
+
+
+def test_sarif_workflows_baseline_and_inline_suppression(tmp_path: Path) -> None:
+    repo = tmp_path / "ci_repo"
+    wf_dir = repo / ".github" / "workflows"
+    wf_dir.mkdir(parents=True)
+
+    (wf_dir / "deploy.yml").write_text(
+        "\n".join(
+            [
+                "on: pull_request_target",
+                "permissions: write-all",
+                "jobs:",
+                "  build:",
+                "    runs-on: ubuntu-latest",
+                "    steps:",
+                "      - uses: actions/checkout@v4",
+                "        with:",
+                "          ref: ${{ github.event.pull_request.head.sha }}",
+                "      - uses: thirdparty/some-action@main",
+                "      - run: echo ${{ github.event.issue.title }}",
+                "      - uses: thirdparty/ignored-action@v1  # devguard: ignore CI-002",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (repo / "script.py").write_text('eval("2+2")\n', encoding="utf-8")
+
+    res = scan_repository(repo)
+    rules = {f.rule_id for f in res.findings}
+    assert "CI-001" in rules
+    assert "CI-003" in rules
+    assert "CI-004" in rules
+    assert "CI-005" in rules
+    assert "CI-002" not in rules  # suppressed inline by '# devguard: ignore CI-002'
+    assert "PY-001" in rules
+    assert res.suppressed_count >= 1
+
+    # Verify SARIF v2.1.0 output structure
+    sarif = json.loads(render_sarif(res))
+    assert sarif["version"] == "2.1.0"
+    assert sarif["runs"][0]["tool"]["driver"]["name"] == "DevGuard"
+    assert len(sarif["runs"][0]["results"]) == len(res.findings)
+
+    # Generate baseline via CLI and confirm subsequent scan suppresses all recorded findings
+    baseline_file = repo / ".devguard-baseline.json"
+    assert cli_main(["baseline", str(repo), "--output", str(baseline_file)]) == 0
+    assert baseline_file.is_file()
+
+    sarif_out = tmp_path / "report.sarif"
+    rc = cli_main(
+        [
+            "scan",
+            str(repo),
+            "--baseline",
+            str(baseline_file),
+            "--format",
+            "sarif",
+            "--output",
+            str(sarif_out),
+            "--fail-on",
+            "low",
+        ]
+    )
+    assert rc == 0
+    filtered = json.loads(sarif_out.read_text(encoding="utf-8"))
+    assert filtered["runs"][0]["results"] == []

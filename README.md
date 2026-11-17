@@ -66,6 +66,17 @@ devguard scan . --plugin ./my_rule.py --format json --output findings.json
 | `PY-001`..`PY-007` | `sast` | `MEDIUM`/`HIGH` | `eval`/`exec`, `os.system`, `shell=True`, `pickle`, `yaml.load`, weak hashes, `verify=False` |
 | `CFG-001`..`CFG-005` | `config`/`container` | `MEDIUM`/`HIGH` | Committed `.env`/keys, `:latest` base image, root container user, `DEBUG=True`, wildcard CORS |
 | `DEP-001`..`DEP-004` | `dependencies` | `LOW`–`HIGH` | Unpinned Python/NPM dependencies, `http://` sources, local `go.mod` `replace` |
+| `CI-001`..`CI-005` | `ci-cd` | `MEDIUM`–`CRITICAL` | Mutable workflow action refs, unpinned third-party actions, `pull_request_target` head checkout, expression injection, `write-all` token permissions |
+
+## Quick Start
+
+1. **Requirements**: Python 3.11+
+2. **Clone**: `git clone https://github.com/fully-ai/devguard.git && cd devguard`
+3. **Install**: `./scripts/install.sh` (Windows: `.\scripts\install.ps1`)
+4. **Configure**: Optional `.devguard.toml` from `.devguard.toml.example`
+5. **Run Scan**: `./scripts/dev.sh .` (or `devguard scan . --format sarif --output devguard.sarif`)
+6. **Generate Baseline**: `.venv/bin/devguard baseline . --output .devguard-baseline.json`
+7. **Run Tests**: `./scripts/test.sh` (Windows: `.\scripts\test.ps1`)
 
 ## Architecture
 
